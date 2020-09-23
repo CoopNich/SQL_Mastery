@@ -19,3 +19,65 @@ create table CarRepairTypeLogs (
   FOREIGN KEY (vehicle_id) REFERENCES Vehicles (vehicle_id),
   FOREIGN KEY (repair_type_id) REFERENCES RepairTypes (repair_type_id)
 );
+
+-- Carnival would like to create a stored procedure that handles the case of updating their vehicle inventory when a sale occurs. 
+-- They plan to do this by flagging the vehicle as is_sold which is a field on the Vehicles table. 
+-- When set to True this flag will indicate that the vehicle is no longer available in the inventory. 
+-- Why not delete this vehicle? We don't want to delete it because it is attached to a sales record.
+
+ALTER TABLE
+  vehicles
+ADD
+  COLUMN is_sold BOOLEAN DEFAULT FALSE;
+  
+ALTER TABLE
+  sales
+ADD
+  COLUMN returned BOOLEAN DEFAULT FALSE;
+
+CREATE PROCEDURE remove_vehicle_from_inventory(vehicleId int) LANGUAGE plpgsql AS $$ BEGIN
+UPDATE
+  vehicles v
+SET
+  is_sold = true
+WHERE
+  v.vehicle_id = vehicleId;
+
+-- Carnival would also like to handle the case for when a car gets returned by a customer. 
+-- When this occurs they must add the car back to the inventory and mark the original sales record as returned = True.
+
+CREATE OR REPLACE PROCEDURE return_sold_vehicle(in vehicleId int)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	UPDATE sales
+	SET returned = true
+	WHERE vehicle_id = vehicleId;
+		
+	UPDATE vehicles
+	SET is_sold = false
+	WHERE vehicle_id = vehicleId;
+	
+END
+$$;
+
+-- Carnival staff are required to do an oil change on the returned car before putting it back on the sales floor. 
+-- In our stored procedure, we must also log the oil change within the OilChangeLog table.
+
+CREATE OR REPLACE PROCEDURE return_sold_vehicle_with_oil_change(in vehicleId int)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	UPDATE sales
+	SET returned = true
+	WHERE vehicle_id = vehicleId;
+		
+	UPDATE vehicles
+	SET is_sold = false
+	WHERE vehicle_id = vehicleId;
+	
+	INSERT INTO oilchangelogs(date_occured, vehicle_id)
+	VALUES (CURRENT_DATE, vehicleId);
+	
+END
+$$;
